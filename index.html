@@ -191,5 +191,20 @@
       });
     })();
   </script>
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const hamburger = document.querySelector('.hamburger');
+    const nav = document.querySelector('.nav');
+
+    if (hamburger && nav) {
+      hamburger.addEventListener('click', () => {
+        // Toggle the animated 'X' on the hamburger
+        hamburger.classList.toggle('active');
+        // Slide the vertical nav down
+        nav.classList.toggle('open');
+      });
+    }
+  });
+</script>
 </body>
 </html>
