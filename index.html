@@ -30,7 +30,6 @@
         <a href="booking.html" class="btn btn-primary">Book Now</a>
       </nav>
       <div class="header-actions">
-        
         <a href="booking.html" class="btn btn-primary">Book Now</a>
         <button class="hamburger" aria-label="Toggle menu"><span></span></button>
       </div>
@@ -77,7 +76,7 @@
         <h2>Cuts, fades & beard work</h2>
         <p>From a quick clean-up to the full works — every service is finished with care.</p>
       </div>
-      <!-- <div class="grid grid-3 reveal" id="home-services"></div> -->
+      <div class="grid grid-3 reveal" id="home-services"></div>
       <div class="text-center mt-4">
         <a href="services.html" class="btn btn-outline">See all services & pricing</a>
       </div>
@@ -176,35 +175,24 @@
   <script>
     (function () {
       const s = document.getElementById("home-services");
-      SERVICES.slice(0, 3).forEach(sv => {
-        const div = document.createElement("div");
-        div.className = "card service-card";
-        div.innerHTML = `<h3>${sv.name}</h3><p>${sv.desc}</p><span class="price">R${sv.price}</span><div class="meta">${sv.duration} min</div>`;
-        s.appendChild(div);
-      });
+      if(s && typeof SERVICES !== 'undefined') {
+        SERVICES.slice(0, 3).forEach(sv => {
+          const div = document.createElement("div");
+          div.className = "card service-card";
+          div.innerHTML = `<h3>${sv.name}</h3><p>${sv.desc}</p><span class="price">R${sv.price}</span><div class="meta">${sv.duration} min</div>`;
+          s.appendChild(div);
+        });
+      }
       const b = document.getElementById("home-barbers");
-      BARBERS.forEach(bb => {
-        const div = document.createElement("div");
-        div.className = "card barber-card";
-        div.innerHTML = `<img src="${bb.img}" alt="${bb.name}" loading="lazy"><div class="barber-body"><h3>${bb.name}</h3><div class="role">${bb.role}</div><p>${bb.bio}</p></div>`;
-        b.appendChild(div);
-      });
+      if(b && typeof BARBERS !== 'undefined') {
+        BARBERS.forEach(bb => {
+          const div = document.createElement("div");
+          div.className = "card barber-card";
+          div.innerHTML = `<img src="${bb.img}" alt="${bb.name}" loading="lazy"><div class="barber-body"><h3>${bb.name}</h3><div class="role">${bb.role}</div><p>${bb.bio}</p></div>`;
+          b.appendChild(div);
+        });
+      }
     })();
   </script>
-  <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const hamburger = document.querySelector('.hamburger');
-    const nav = document.querySelector('.nav');
-
-    if (hamburger && nav) {
-      hamburger.addEventListener('click', () => {
-        // Toggle the animated 'X' on the hamburger
-        hamburger.classList.toggle('active');
-        // Slide the vertical nav down
-        nav.classList.toggle('open');
-      });
-    }
-  });
-</script>
 </body>
 </html>
