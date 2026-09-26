@@ -1,205 +1,292 @@
-(function () {
+document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("booking-app");
   if (!form) return;
 
-  const state = {
-    step: 1,
+  // Normalize data: support both SHOP/SERVICES/BARBERS and shopData shape
+  const shopData = (typeof SHOP !== "undefined")
+    ? { ...SHOP, services: SERVICES, barbers: BARBERS }
+    : window.shopData;
+
+  let bookingState = {
     service: null,
     barber: null,
     date: null,
     time: null,
-    customer: { name: "", email: "", phone: "", notes: "" }
+    customer: {},
   };
 
-  const panels = form.querySelectorAll(".booking-panel");
-  const stepEls = document.querySelectorAll(".step");
+  const panels = document.querySelectorAll(".booking-panel");
+  const steps = document.querySelectorAll(".step");
 
-  function goTo(step) {
-    state.step = step;
-    panels.forEach(p => p.classList.toggle("active", Number(p.dataset.step) === step));
-    stepEls.forEach(s => {
-      const n = Number(s.dataset.step);
-      s.classList.toggle("active", n === step);
-      s.classList.toggle("done", n < step);
-    });
-    window.scrollTo({ top: form.getBoundingClientRect().top + window.scrollY - 120, behavior: "smooth" });
-    updateNextButtons();
-  }
-
-  function updateNextButtons() {
-    const next1 = form.querySelector("[data-next='1']");
-    if (next1) next1.disabled = !state.service;
-    const next2 = form.querySelector("[data-next='2']");
-    if (next2) next2.disabled = !state.barber;
-    const next3 = form.querySelector("[data-next='3']");
-    if (next3) next3.disabled = !(state.date && state.time);
-    const next4 = form.querySelector("[data-next='4']");
-    if (next4) {
-      const { name, email, phone } = state.customer;
-      next4.disabled = !(name.trim() && email.trim() && phone.trim());
-    }
-  }
-
-  form.addEventListener("click", (e) => {
-    const nextBtn = e.target.closest("[data-next]");
-    if (nextBtn) goTo(Number(nextBtn.dataset.next));
-    const backBtn = e.target.closest("[data-back]");
-    if (backBtn) goTo(Number(backBtn.dataset.back));
+  // ---------- Step 1: Services ----------
+  const serviceGrid = document.getElementById("service-options");
+  shopData.services.forEach((s) => {
+    serviceGrid.insertAdjacentHTML(
+      "beforeend",
+      `<div class="card select-card" data-type="service" data-id="${s.id}">
+        <h4>${s.name}</h4>
+        <p>${s.desc}</p>
+        <strong>R${s.price} · ${s.duration} mins</strong>
+      </div>`
+    );
   });
 
-  const serviceGrid = form.querySelector("#service-options");
-  if (serviceGrid) {
-    SERVICES.forEach(s => {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className = "option";
-      el.dataset.serviceId = s.id;
-      el.innerHTML = `<h4>${s.name}</h4><div class="opt-price">R${s.price}</div><div class="opt-meta">${s.duration} min · ${s.desc}</div>`;
-      el.addEventListener("click", () => {
-        state.service = s;
-        serviceGrid.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
-        el.classList.add("selected");
-        updateNextButtons();
-        if (state.date && state.barber) renderTimeSlots();
-      });
-      serviceGrid.appendChild(el);
+  // ---------- Step 2: Barbers ----------
+  const barberGrid = document.getElementById("barber-options");
+  shopData.barbers.forEach((b) => {
+    barberGrid.insertAdjacentHTML(
+      "beforeend",
+      `<div class="card select-card" data-type="barber" data-id="${b.id}">
+        <h4>${b.name}</h4>
+        <p>${b.role}</p>
+      </div>`
+    );
+  });
+
+  // ---------- Selection Handling ----------
+  document.querySelectorAll(".select-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const type = card.dataset.type;
+      document
+        .querySelectorAll(`.select-card[data-type="${type}"]`)
+        .forEach((c) => c.classList.remove("selected"));
+      card.classList.add("selected");
+
+      const collection = type === "service" ? shopData.services : shopData.barbers;
+      bookingState[type] = collection.find((item) => item.id === card.dataset.id);
+
+      const nextBtn = card.closest(".booking-panel").querySelector("[data-next]");
+      if (nextBtn) nextBtn.disabled = false;
     });
-  }
+  });
 
-  const barberGrid = form.querySelector("#barber-options");
-  if (barberGrid) {
-    BARBERS.forEach(b => {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className = "option";
-      el.dataset.barberId = b.id;
-      el.innerHTML = `<h4>${b.name}</h4><div class="opt-meta">${b.role}</div>`;
-      el.addEventListener("click", () => {
-        state.barber = b;
-        barberGrid.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
-        el.classList.add("selected");
-        updateNextButtons();
-        if (state.date) renderTimeSlots();
-      });
-      barberGrid.appendChild(el);
-    });
-  }
+  // ---------- Step 3: Date & Time ----------
+  const dateInput = document.getElementById("booking-date");
+  const timeGrid = document.getElementById("time-options");
 
-  const dateInput = form.querySelector("#booking-date");
-  const timeGrid = form.querySelector("#time-options");
+  // Min date = today (local, not UTC)
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  dateInput.setAttribute("min", `${yyyy}-${mm}-${dd}`);
 
-  function renderTimeSlots() {
-    if (!timeGrid || !dateInput.value || !state.service || !state.barber) return;
-    const slots = getTimeSlots(dateInput.value, state.service.duration, state.barber.id);
-    timeGrid.innerHTML = "";
-    state.time = null;
-    updateNextButtons();
+  dateInput.addEventListener("change", (e) => {
+    const dateVal = e.target.value;
+    if (!dateVal) return;
 
-    if (slots.length === 0) {
-      timeGrid.innerHTML = `<p style="color:var(--text-muted);grid-column:1/-1;">Closed on this day. Please pick another date.</p>`;
+    // Sunday closed (0 = Sunday)
+    const dayOfWeek = new Date(dateVal + "T00:00:00").getDay();
+    if (dayOfWeek === 0) {
+      timeGrid.innerHTML = `<p style="color:var(--accent);grid-column:1/-1;">We are closed on Sundays. Please pick another day.</p>`;
+      const nextBtn = document.querySelector('[data-step="3"] [data-next]');
+      if (nextBtn) nextBtn.disabled = true;
+      bookingState.time = null;
       return;
     }
 
-    slots.forEach(slot => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "time-slot";
-      btn.textContent = slot.time;
-      btn.disabled = slot.booked;
-      if (slot.booked) btn.title = "Already booked";
+    bookingState.date = dateVal;
+    bookingState.time = null;
+
+    // Use the real availability logic from data.js
+    const slots = getTimeSlots(
+      dateVal,
+      bookingState.service.duration,
+      bookingState.barber ? bookingState.barber.id : null
+    );
+
+    if (!slots.length) {
+      timeGrid.innerHTML = `<p style="color:var(--text-muted);grid-column:1/-1;">No slots available on this day.</p>`;
+      return;
+    }
+
+    timeGrid.innerHTML = slots
+      .map(
+        (slot) => `<button type="button"
+          class="btn btn-outline time-btn${slot.booked ? " booked" : ""}"
+          data-time="${slot.time}"
+          ${slot.booked ? "disabled" : ""}>
+          ${slot.time}${slot.booked ? " ✕" : ""}
+        </button>`
+      )
+      .join("");
+
+    document.querySelectorAll(".time-btn:not(.booked)").forEach((btn) => {
       btn.addEventListener("click", () => {
-        state.time = slot.time;
-        timeGrid.querySelectorAll(".time-slot").forEach(t => t.classList.remove("selected"));
-        btn.classList.add("selected");
-        updateNextButtons();
+        document
+          .querySelectorAll(".time-btn")
+          .forEach((b) => b.classList.remove("selected-time"));
+        btn.classList.add("selected-time");
+        bookingState.time = btn.dataset.time;
+        document.querySelector('[data-step="3"] [data-next]').disabled = false;
       });
-      timeGrid.appendChild(btn);
-    });
-  }
-
-  if (dateInput) {
-    const today = new Date();
-    const max = new Date();
-    max.setDate(today.getDate() + 60);
-    dateInput.min = today.toISOString().split("T")[0];
-    dateInput.max = max.toISOString().split("T")[0];
-    dateInput.addEventListener("change", () => {
-      state.date = dateInput.value;
-      renderTimeSlots();
-    });
-  }
-
-  const fields = {
-    name:  form.querySelector("#cust-name"),
-    email: form.querySelector("#cust-email"),
-    phone: form.querySelector("#cust-phone"),
-    notes: form.querySelector("#cust-notes")
-  };
-  Object.entries(fields).forEach(([key, input]) => {
-    if (!input) return;
-    input.addEventListener("input", () => {
-      state.customer[key] = input.value;
-      updateNextButtons();
     });
   });
 
-  function renderConfirmation() {
-    const c = form.querySelector("#confirm-details");
-    if (!c) return;
-    const start = combineDateTime(state.date, state.time);
-    const end = new Date(start.getTime() + state.service.duration * 60000);
-    c.innerHTML = `
-      <div class="confirm-row"><span class="k">Service</span><span class="v">${state.service.name}</span></div>
-      <div class="confirm-row"><span class="k">Barber</span><span class="v">${state.barber.name}</span></div>
-      <div class="confirm-row"><span class="k">Date</span><span class="v">${formatDateLong(start)}</span></div>
-      <div class="confirm-row"><span class="k">Time</span><span class="v">${state.time} – ${formatTime(end)}</span></div>
-      <div class="confirm-row"><span class="k">Duration</span><span class="v">${state.service.duration} min</span></div>
-      <div class="confirm-row"><span class="k">Price</span><span class="v">R${state.service.price}</span></div>
-      <div class="confirm-row"><span class="k">Name</span><span class="v">${escapeHtml(state.customer.name)}</span></div>
-      <div class="confirm-row"><span class="k">Email</span><span class="v">${escapeHtml(state.customer.email)}</span></div>
-      <div class="confirm-row"><span class="k">Phone</span><span class="v">${escapeHtml(state.customer.phone)}</span></div>
-      ${state.customer.notes ? `<div class="confirm-row"><span class="k">Notes</span><span class="v">${escapeHtml(state.customer.notes)}</span></div>` : ""}
+  // ---------- Navigation ----------
+  document.querySelectorAll("[data-next]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      navigateToStep(parseInt(btn.dataset.next, 10))
+    );
+  });
+  document.querySelectorAll("[data-back]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      navigateToStep(parseInt(btn.dataset.back, 10))
+    );
+  });
+
+  // Enable "Review Booking" button when required fields valid
+  ["cust-name", "cust-phone", "cust-email"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => {
+      const name = document.getElementById("cust-name").value.trim();
+      const phone = document.getElementById("cust-phone").value.trim();
+      const email = document.getElementById("cust-email").value.trim();
+      const nextBtn = document.querySelector('[data-step="4"] [data-next]');
+      if (nextBtn) nextBtn.disabled = !(name && phone && email);
+    });
+  });
+
+  function navigateToStep(stepNum) {
+    if (stepNum === 5) {
+      const name = document.getElementById("cust-name").value.trim();
+      const phone = document.getElementById("cust-phone").value.trim();
+      const email = document.getElementById("cust-email").value.trim();
+
+      if (!name || !phone || !email) {
+        alert("Please fill in all required fields.");
+        return;
+      }
+      bookingState.customer = {
+        name,
+        phone,
+        email,
+        notes: document.getElementById("cust-notes").value.trim(),
+      };
+      finalizeBooking();
+    }
+
+    panels.forEach((p) => p.classList.remove("active"));
+    steps.forEach((s) => {
+      const sNum = parseInt(s.dataset.step, 10);
+      s.classList.toggle("active", sNum === stepNum);
+      s.classList.toggle("completed", sNum < stepNum);
+    });
+    document
+      .querySelector(`.booking-panel[data-step="${stepNum}"]`)
+      .classList.add("active");
+  }
+
+  // ---------- Confirmation & Calendar ----------
+  function finalizeBooking() {
+    const { service, barber, date, time, customer } = bookingState;
+
+    document.getElementById("confirm-details").innerHTML = `
+      <p><strong>Service:</strong> ${service.name} (${service.duration} min)</p>
+      <p><strong>Barber:</strong> ${barber.name}</p>
+      <p><strong>Date & Time:</strong> ${formatHumanDate(date)} at ${time}</p>
+      <p><strong>Booked for:</strong> ${customer.name} · ${customer.phone}</p>
+      ${customer.notes ? `<p><strong>Notes:</strong> ${customer.notes}</p>` : ""}
     `;
+
+    // Build a Date object in LOCAL time (avoids UTC shifting)
+    const [h, m] = time.split(":").map(Number);
+    const [yy, mo, dd] = date.split("-").map(Number);
+    const startDate = new Date(yy, mo - 1, dd, h, m, 0, 0);
+    const endDate = new Date(startDate.getTime() + service.duration * 60000);
+
+    const event = {
+      title: `${service.name} with ${barber.name} — Fade & Forge`,
+      description:
+        `Appointment at Fade & Forge Barber Co.\n` +
+        `Service: ${service.name} (${service.duration} min)\n` +
+        `Barber: ${barber.name}\n` +
+        `Client: ${customer.name}\n` +
+        `Phone: ${customer.phone}\n` +
+        `Email: ${customer.email}\n` +
+        (customer.notes ? `Notes: ${customer.notes}\n` : "") +
+        `\nPlease arrive 5 minutes early. To reschedule call ${shopData.phone}.`,
+      location: shopData.address,
+      start: startDate,
+      end: endDate,
+    };
+
+    setupGoogleCalendar(event);
+    setupICSCalendar(event);
   }
 
-  const next4 = form.querySelector("[data-next='4']");
-  if (next4) next4.addEventListener("click", renderConfirmation);
-
-  function buildEvent() {
-    const start = combineDateTime(state.date, state.time);
-    const end = new Date(start.getTime() + state.service.duration * 60000);
-    const title = `${state.service.name} at ${SHOP.shortName}`;
-    const details =
-      `Appointment with ${state.barber.name}.\n` +
-      `Service: ${state.service.name} (${state.service.duration} min)\n` +
-      `Price: R${state.service.price}\n` +
-      `Booked for: ${state.customer.name}\n` +
-      `Phone: ${state.customer.phone}\n` +
-      (state.customer.notes ? `Notes: ${state.customer.notes}\n` : "") +
-      `\nPlease arrive 5 minutes early. To reschedule call ${SHOP.phone}.`;
-    return { start, end, title, details, location: SHOP.address };
-  }
-
-  const gcalBtn = form.querySelector("#add-google");
-  if (gcalBtn) {
-    gcalBtn.addEventListener("click", () => {
-      const { start, end, title, details, location } = buildEvent();
-      const url = new URL("https://calendar.google.com/calendar/render");
-      url.searchParams.set("action", "TEMPLATE");
-      url.searchParams.set("text", title);
-      url.searchParams.set("dates", `${toGCal(start)}/${toGCal(end)}`);
-      url.searchParams.set("details", details);
-      url.searchParams.set("location", location);
-      window.open(url.toString(), "_blank");
+  function formatHumanDate(dateStr) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString("en-ZA", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
     });
   }
 
-  const icsBtn = form.querySelector("#add-ics");
-  if (icsBtn) {
-    icsBtn.addEventListener("click", () => {
-      const { start, end, title, details, location } = buildEvent();
-      const ics = buildICS({ start, end, title, details, location });
-      const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  // Convert local Date -> UTC string for Google (Google expects UTC w/ Z)
+  function toGoogleUTC(date) {
+    return date.toISOString().replace(/[-:]|\.\d{3}/g, "");
+  }
+
+  function setupGoogleCalendar(event) {
+    const startStr = toGoogleUTC(event.start);
+    const endStr = toGoogleUTC(event.end);
+    const params = new URLSearchParams({
+      action: "TEMPLATE",
+      text: event.title,
+      dates: `${startStr}/${endStr}`,
+      details: event.description,
+      location: event.location,
+    });
+    const url = `https://calendar.google.com/calendar/render?${params.toString()}`;
+    document.getElementById("add-google").onclick = () =>
+      window.open(url, "_blank", "noopener");
+  }
+
+  function setupICSCalendar(event) {
+    const startStr = toGoogleUTC(event.start);
+    const endStr = toGoogleUTC(event.end);
+    const uid = `fadeandforge-${Date.now()}@fadeandforge.co.za`;
+    const stamp = toGoogleUTC(new Date());
+
+    // Escape ICS special chars
+    const esc = (s) =>
+      String(s)
+        .replace(/\\/g, "\\\\")
+        .replace(/\n/g, "\\n")
+        .replace(/,/g, "\\,")
+        .replace(/;/g, "\\;");
+
+    const icsLines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Fade & Forge//Booking//EN",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${startStr}`,
+      `DTEND:${endStr}`,
+      `SUMMARY:${esc(event.title)}`,
+      `DESCRIPTION:${esc(event.description)}`,
+      `LOCATION:${esc(event.location)}`,
+      "BEGIN:VALARM",
+      "TRIGGER:-PT30M",
+      "ACTION:DISPLAY",
+      "DESCRIPTION:Reminder — haircut at Fade & Forge",
+      "END:VALARM",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ];
+
+    document.getElementById("add-ics").onclick = () => {
+      const blob = new Blob([icsLines.join("\r\n")], {
+        type: "text/calendar;charset=utf-8",
+      });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = "fade-and-forge-appointment.ics";
@@ -207,41 +294,6 @@
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
-    });
+    };
   }
-
-  function combineDateTime(dateStr, timeStr) {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const [hh, mm] = timeStr.split(":").map(Number);
-    return new Date(y, m - 1, d, hh, mm, 0);
-  }
-  function formatDateLong(date) {
-    return date.toLocaleDateString("en-ZA", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  }
-  function formatTime(date) { return date.toTimeString().slice(0, 5); }
-  function toGCal(date) {
-    const pad = n => String(n).padStart(2, "0");
-    return date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) + "T" +
-           pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
-  }
-  function toICS(date) { return toGCal(date); }
-  function buildICS({ start, end, title, details, location }) {
-    const uid = `ff-${Date.now()}@fadeandforge.co.za`;
-    const dtstamp = toICS(new Date()) + "Z";
-    const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
-    return [
-      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Fade & Forge//Booking//EN",
-      "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "BEGIN:VEVENT",
-      `UID:${uid}`, `DTSTAMP:${dtstamp}`,
-      `DTSTART:${toICS(start)}`, `DTEND:${toICS(end)}`,
-      `SUMMARY:${esc(title)}`, `DESCRIPTION:${esc(details)}`, `LOCATION:${esc(location)}`,
-      "BEGIN:VALARM", "TRIGGER:-PT30M", "ACTION:DISPLAY", "DESCRIPTION:Reminder", "END:VALARM",
-      "END:VEVENT", "END:VCALENDAR"
-    ].join("\r\n");
-  }
-  function escapeHtml(str) {
-    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-
-  goTo(1);
-})();
+});
